@@ -1,4 +1,4 @@
-curl https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+curl https://github-releases.githubusercontent.com/92205085/b3599d47-a6c5-463e-a96f-fcc79f95aa36?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20211115%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20211115T215036Z&X-Amz-Expires=300&X-Amz-Signature=0b20155a9a977353d3cc93ca387fbbe1a00d6a01181e59a757cc6b39665e1c46&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=92205085&response-content-disposition=attachment%3B%20filename%3Daws-sam-cli-linux-x86_64.zip&response-content-type=application%2Foctet-stream
 unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
 sudo ./sam-installation/install
 sam --version
