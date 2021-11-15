@@ -1,0 +1,358 @@
+---
+#############################################
+groups:
+#############################################
+  - name: all
+    jobs:
+      - feature-cfn-lint
+      - feature-code-analysis
+      - feature-quality-gate
+      - feature-deploy-dev
+      - feature-deploy-int
+
+      - master-cfn-lint
+      - master-code-analysis
+      - master-quality-gate
+      - master-deploy-dev
+      - master-deploy-int
+      - master-deploy-cons
+      - master-deploy-prod
+
+  - name: feature
+    jobs:
+      - feature-cfn-lint
+      - feature-code-analysis
+      - feature-quality-gate
+      - feature-deploy-dev
+      - feature-deploy-int
+
+  - name: master
+    jobs:
+      - master-cfn-lint
+      - master-code-analysis
+      - master-quality-gate
+      - master-deploy-dev
+      - master-deploy-int
+      - master-deploy-cons
+      - master-deploy-prod
+
+  - name: deployments
+    jobs:
+      - feature-deploy-dev
+      - feature-deploy-int
+      - master-deploy-dev
+      - master-deploy-int
+      - master-deploy-cons
+      - master-deploy-prod
+
+#############################################
+resource_types:
+#############################################
+  - name: aws-credentials
+    type: registry-image
+    source:
+      repository: mps-docker-virtual.artifactory.platform.vwfs.io/public/concourse/resources/aws-credentials
+      tag: 1.0.0
+      username: ((artifactory-username))
+      password: ((artifactory-password))
+
+  - name: sonar-runner
+    type: registry-image
+    source:
+      repository: cathive/concourse-sonarqube-resource
+      tag: v0.12.0
+
+  - name: buildstatus
+    type: registry-image
+    source:
+      repository: mps-docker-virtual.artifactory.platform.vwfs.io/public/concourse/resources/bitbucket-buildstatus
+      tag: 2.0.5
+      username: ((artifactory-username))
+      password: ((artifactory-password))
+
+  - name: git-multibranch
+    type: registry-image
+    source:
+      repository: cfcommunity/git-multibranch-resource
+
+#############################################
+resources:
+#############################################
+  - name: feature-source
+    type: git-multibranch
+    icon: git
+    source:
+      uri: git@github.platform.vwfs.io:((REPO_LOCATION)).git
+      private_key: ((transform.github.private_key))
+      branches: '.*'
+      ignore_branches: '(master)'
+
+  - name: master-source
+    type: git
+    icon: git
+    source:
+      uri: git@github.platform.vwfs.io:((REPO_LOCATION)).git
+      private_key: ((transform.github.private_key))
+      branch: "master"
+
+  - name: buildstatus
+    type: buildstatus
+    icon: file-chart
+    source:
+      repo_name: ((REPO_LOCATION))
+      username: ((transform.github.username))
+      password: ((transform.github.token))
+
+  - name: credentials-dev
+    type: aws-credentials
+    icon: shield-lock
+    source:
+      path: concourse/((TEAM_NAME))/aws/sts/((TEAM_NAME))-dev-GenericDeploymentRole
+      role_id: ((((TEAM_NAME))-dev-GenericDeploymentRole-role_id))
+      secret_id: ((((TEAM_NAME))-dev-GenericDeploymentRole-secret_id))
+
+  - name: credentials-int
+    type: aws-credentials
+    icon: shield-lock
+    source:
+      path: concourse/((TEAM_NAME))/aws/sts/((TEAM_NAME))-int-GenericDeploymentRole
+      role_id: ((((TEAM_NAME))-int-GenericDeploymentRole-role_id))
+      secret_id: ((((TEAM_NAME))-int-GenericDeploymentRole-secret_id))
+
+  - name: credentials-cons
+    type: aws-credentials
+    icon: shield-lock
+    source:
+      path: concourse/((TEAM_NAME))/aws/sts/((TEAM_NAME))-cons-GenericDeploymentRole
+      role_id: ((((TEAM_NAME))-cons-GenericDeploymentRole-role_id))
+      secret_id: ((((TEAM_NAME))-cons-GenericDeploymentRole-secret_id))
+
+  - name: credentials-prod
+    type: aws-credentials
+    icon: shield-lock
+    source:
+      path: concourse/((TEAM_NAME))/aws/sts/((TEAM_NAME))-prod-GenericDeploymentRole
+      role_id: ((((TEAM_NAME))-prod-GenericDeploymentRole-role_id))
+      secret_id: ((((TEAM_NAME))-prod-GenericDeploymentRole-secret_id))
+
+  - name: code-analysis
+    type: sonar-runner
+    source:
+      host_url: ((sonarqube-parameters.url))
+      login: ((sonarqube-parameters.token))
+      __debug: ((sonarqube-parameters.debug))
+
+#############################################
+# ANCHORS
+#############################################
+buildstatus_inprogress: &buildstatus_inprogress
+  put: buildstatus
+  params:
+    state: pending
+    repo: source
+buildstatus: &buildstatus
+  on_success:
+    put: buildstatus
+    params:
+      state: success
+      repo: source
+  on_failure:
+    put: buildstatus
+    params:
+      state: failure
+      repo: source
+
+run_quality_analysis: &run_quality_analysis
+  do:
+    - in_parallel:
+      - task: cfn-lint
+        file: source/ci/tasks/cfn_nag.yml
+        params:
+          GENERATE_REPORT_AND_CONTINUE: true
+    - task: prep-files
+      file: source/ci/tasks/prep_sonarqube_files.yml
+    - put: code-analysis
+      params:
+        project_path: code-coverage
+        additional_properties_file: code-coverage/sonar-project.properties
+
+#############################################
+jobs:
+#############################################
+
+################
+# Feature Branch
+################
+  - name: feature-cfn-lint
+    plan:
+      - get: source
+        resource: feature-source
+        trigger: true
+      - *buildstatus_inprogress
+      - task: cfn-lint
+        file: source/ci/tasks/cfn_nag.yml
+    <<: *buildstatus
+
+  - name: feature-code-analysis
+    plan:
+      - get: source
+        resource: feature-source
+        trigger: true
+      - *buildstatus_inprogress
+      - *run_quality_analysis
+    <<: *buildstatus
+
+  - name: feature-quality-gate
+    plan:
+      - get: source
+        resource: feature-source
+        passed: [feature-code-analysis]
+        trigger: true
+      - *buildstatus_inprogress
+      - get: code-analysis
+      - task: check-quality-gate
+        file: source/ci/tasks/check_quality_gate.yml
+    <<: *buildstatus
+
+  - name: feature-deploy-dev
+    build_log_retention:
+      minimum_succeeded_builds: 2
+    plan:
+      - get: source
+        resource: feature-source
+        passed: [feature-quality-gate]
+        trigger: false
+      - *buildstatus_inprogress
+      - put: aws-credentials
+        resource: credentials-dev
+      - task: deploy-infra
+        file: source/ci/tasks/deploy_infra.yml
+      - task: deploy-content
+        file: source/ci/tasks/deploy_content.yml
+    <<: *buildstatus
+
+  - name: feature-deploy-int
+    build_log_retention:
+      minimum_succeeded_builds: 2
+    plan:
+      - get: source
+        resource: feature-source
+        passed: [feature-quality-gate]
+        trigger: false
+      - *buildstatus_inprogress
+      - put: aws-credentials
+        resource: credentials-int
+      - task: deploy-infra
+        file: source/ci/tasks/deploy_infra.yml
+      - task: deploy-content
+        file: source/ci/tasks/deploy_content.yml
+    <<: *buildstatus
+
+################
+# Master Branch
+################
+  - name: master-cfn-lint
+    plan:
+      - get: source
+        resource: master-source
+        trigger: true
+      - *buildstatus_inprogress
+      - task: cfn-lint
+        file: source/ci/tasks/cfn_nag.yml
+    <<: *buildstatus
+
+  - name: master-code-analysis
+    plan:
+      - get: source
+        resource: master-source
+        trigger: true
+      - *buildstatus_inprogress
+      - *run_quality_analysis
+    <<: *buildstatus
+
+  - name: master-quality-gate
+    plan:
+      - get: source
+        resource: master-source
+        passed: [master-code-analysis]
+        trigger: true
+      - *buildstatus_inprogress
+      - get: code-analysis
+      - task: check-quality-gate
+        file: source/ci/tasks/check_quality_gate.yml
+    <<: *buildstatus
+
+  - name: master-deploy-dev
+    build_log_retention:
+      minimum_succeeded_builds: 2
+    plan:
+      - get: source
+        resource: master-source
+        passed: [master-quality-gate]
+        trigger: true
+      - *buildstatus_inprogress
+      - put: aws-credentials
+        resource: credentials-dev
+      - task: deploy-infra
+        file: source/ci/tasks/deploy_infra.yml
+      - task: deploy-content
+        file: source/ci/tasks/deploy_content.yml
+    <<: *buildstatus
+
+  - name: master-deploy-int
+    build_log_retention:
+      minimum_succeeded_builds: 2
+    plan:
+      - get: source
+        resource: master-source
+        passed: [master-deploy-dev]
+        trigger: true
+      - *buildstatus_inprogress
+      - put: aws-credentials
+        resource: credentials-int
+      - task: deploy-infra
+        file: source/ci/tasks/deploy_infra.yml
+      - task: deploy-content
+        file: source/ci/tasks/deploy_content.yml
+    <<: *buildstatus
+
+  - name: master-deploy-cons
+    build_log_retention:
+      minimum_succeeded_builds: 2
+    plan:
+      - get: source
+        resource: master-source
+        passed: [master-deploy-int]
+        trigger: true
+      - *buildstatus_inprogress
+      - put: aws-credentials
+        resource: credentials-cons
+      - task: deploy-infra
+        file: source/ci/tasks/deploy_infra.yml
+      - task: deploy-content
+        file: source/ci/tasks/deploy_content.yml
+    <<: *buildstatus
+
+  - name: master-deploy-prod
+    build_log_retention:
+      minimum_succeeded_builds: 2
+    plan:
+      - get: source
+        resource: master-source
+        passed: [master-deploy-cons]
+        trigger: false
+      - *buildstatus_inprogress
+      - in_parallel:
+        - put: aws-dev-credentials
+          resource: credentials-dev
+        - put: aws-int-credentials
+          resource: credentials-int
+        - put: aws-cons-credentials
+          resource: credentials-cons
+        - put: aws-credentials
+          resource: credentials-prod
+      - task: deploy-infra
+        file: source/ci/tasks/deploy_infra.yml
+      - task: deploy-content
+        file: source/ci/tasks/deploy_content.yml
+    <<: *buildstatus

@@ -1,0 +1,22 @@
+platform: linux
+image_resource:
+  type: docker-image
+  source:
+    repository: amazon/aws-cli
+    tag: latest
+inputs:
+  - name: source
+  - name: aws-credentials
+  - name: aws-dev-credentials
+    optional: true
+  - name: aws-int-credentials
+    optional: true
+  - name: aws-cons-credentials
+    optional: true
+
+params:
+  CI: true
+  SHOULD_DEPLOY_CERT: true
+  # SHOULD_DEPLOY_CERT must be set to 'false' until the deployment has reached prod once
+run:
+  path: source/scripts/deploy_infra.sh

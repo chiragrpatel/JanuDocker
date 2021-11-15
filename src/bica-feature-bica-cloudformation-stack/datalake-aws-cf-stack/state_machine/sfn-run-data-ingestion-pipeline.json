@@ -1,0 +1,55 @@
+{
+  "Comment": "Run data ingestion pipeline",
+  "StartAt": "Run Glue Job: Raw-to-Curated",
+  "States": {
+   "Run Glue Job: Raw-to-Curated": {
+     "Type": "Task",
+     "Resource": "arn:aws:states:::glue:startJobRun.sync",
+     "Retry": [{"ErrorEquals": ["States.ALL"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 1.5
+        }
+      ],
+     "Parameters": {
+       "JobName": "glue-load-raw-to-curated",
+       "Arguments":{ "--bucket.$":"$.bucket",
+                    "--domain.$":"$.domain",
+       "--table.$":"$.table",
+       "--key_list.$":"$.key_list",
+       "--env.$":"$.env",
+       "--region.$":"$.region",
+       "--account_id.$":"$.account_id",
+       "--sns_topic.$":"$.sns_topic"}
+     },
+   "Next": "Raw-to-Curated-Completed"
+   },
+     "Raw-to-Curated-Completed": {
+       "Type": "Pass",
+       "Next": "Run Glue job: Curated-to-Transformed"
+    },
+    "Run Glue job: Curated-to-Transformed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "InputPath": "$.Arguments",
+      "Parameters": {
+       "JobName": "glue-load-curated-to-transformed",
+       "Arguments":{
+         "--bucket.$":"$.--bucket",
+         "--domain.$":"$.--domain",
+         "--table.$":"$.--table",
+         "--env.$":"$.--env",
+       "--region.$":"$.--region",
+       "--account_id.$":"$.--account_id",
+       "--sns_topic.$":"$.--sns_topic"
+       }
+     },
+     "Next":"Job Finished"
+    },
+    "Job Finished":{
+      "Type": "Pass",
+      "Result": "Success",
+      "End": true
+    }
+  }
+}

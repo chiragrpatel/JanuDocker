@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Step function for data ingestion pipeline
+Parameters:
+  StepFunctionName:
+    Type: String
+    Default: vw-cred-datalake-sfn-run-data-ingestion-pipeline
+  SFRole:
+    Type: String
+    Default: step-function-service-role
+  Env:
+    Type: String
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+Resources:
+  SMLogs:
+    Type: AWS::Logs::LogGroup
+  VWCdlDataIngestionSF:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name:
+        Ref: StepFunctionName
+      DefinitionUri:
+        Bucket: vci-int-artifacts-660734235353-us-east-1
+        Key: sam/artifacts/8d5e61be016f2ca4452a23f8c44dba76
+      Role:
+        Fn::Sub: arn:aws:iam::${AWS::AccountId}:role/${SFRole}
+      DefinitionSubstitutions:
+        AccountId:
+          Ref: AWS::AccountId
+      Logging:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+        - CloudWatchLogsLogGroup:
+            LogGroupArn:
+              Fn::GetAtt:
+              - SMLogs
+              - Arn
+      Tags:
+        vci:team:
+          Ref: TeamTag
+        env:
+          Ref: Env
+        tenant:
+          Ref: AWSTenant

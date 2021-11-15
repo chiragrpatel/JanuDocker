@@ -1,0 +1,17 @@
+platform: linux
+image_resource:
+  type: docker-image
+  source:
+    repository: amazon/aws-cli
+    tag: latest
+inputs:
+  - name: source
+  - name: aws-credentials
+
+params:
+  CI: true
+  SHOULD_DELETE:
+  SHOULD_DELETE_PROD:
+  PRODUCT: # If the product name has changed you can specify the old product name here
+run:
+  path: source/scripts/destroy_infra.sh

@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "AWS Glue Jobs for SF vw-cred-datalake-sfn-run-data-ingestion-pipeline"
+
+Parameters:
+  Env:
+    Type: String
+  GlueRole:
+    Type: String
+    Default: glue-service-role
+  VWCdlLoadRawToCuratedGlueName:
+    Type: String
+    Default: vw-cred-datalake-glue-load-raw-to-curated
+  VWCdlLoadRawToCuratedGlueScript:
+    Type: String
+    Default: vw-cred-datalake-glue-load-raw-to-curated.py
+  VWCdlLoadCuratedToTransformedGlueName:
+    Type: String
+    Default: vw-cred-datalake-glue-load-curated-to-transformed
+  VWCdlLoadCuratedToTransformedGlueScript:
+    Type: String
+    Default: vw-cred-datalake-glue-load-curated-to-transformed.py
+  ArtifactsBucket:
+    Type: String
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+
+
+Resources:
+  VWCdlLoadRawToCuratedGlue:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref VWCdlLoadRawToCuratedGlueName
+      Description: Glue job to load from raw to curated s3 buckets
+      Role: !Ref GlueRole
+      Command: 
+        Name: !Ref VWCdlLoadRawToCuratedGlueScript
+        ScriptLocation: !Sub s3://${ArtifactsBucket}/glue/${VWCdlLoadRawToCuratedGlueScript}
+        PythonVersion: 3
+      ExecutionProperty: 
+        MaxConcurrentRuns: 10
+      GlueVersion: 2.0
+      MaxCapacity: 10
+      MaxRetries: 3
+      NumberOfWorkers: 10    
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+      Timeout: 600
+      WorkerType: G.1X
+
+  VWCdlLoadCuratedToTransformedGlue:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Ref VWCdlLoadCuratedToTransformedGlueName
+      Description: Glue job to load from curated to transformed s3 buckets
+      Role: !Ref GlueRole
+      Command: 
+        Name: !Ref VWCdlLoadCuratedToTransformedGlueScript
+        ScriptLocation: !Sub s3://${ArtifactsBucket}/glue/${VWCdlLoadCuratedToTransformedGlueScript}
+        PythonVersion: 3
+      ExecutionProperty: 
+        MaxConcurrentRuns: 10
+      GlueVersion: 2.0
+      MaxCapacity: 10
+      MaxRetries: 3  
+      NumberOfWorkers: 10    
+      Tags:
+        "vci:team" : !Ref TeamTag
+        "env" : !Ref Env
+        "tenant" : !Ref AWSTenant
+      Timeout: 600
+      WorkerType: G.1X

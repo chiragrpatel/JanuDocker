@@ -1,0 +1,304 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template for roles and policies used in data ingestion pipeline.
+Parameters:
+  Env:
+    Type: String
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+    Default: vw-cred-datalake
+  GlueServiceRoleName:
+    Type: String
+    Default: glue-service-role
+  EventbridgeServiceRoleName:
+    Type: String
+    Default: eventbridge-service-role
+  DataIngestionSFName:
+    Type: String
+    Default: sfn-run-data-ingestion-pipeline
+  LambdaServiceRoleName:
+    Type: String
+    Default: lambda-service-role
+  StepFunctionServiceRoleName:
+    Type: String
+    Default: step-function-service-role
+  KmsKeyAccessPolicyName:
+    Type: String
+    Default: kms-key-access-policy
+  S3BucketAccessPolicyName:
+    Type: String
+    Default: s3-bucket-access-policy
+  CloudTrailServiceRoleName:
+    Type: String
+    Default: cloud-trail-service-role
+
+
+
+Resources:
+
+  KmsKeyAccessPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Ref KmsKeyAccessPolicyName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              -  'kms:Decrypt'
+              -  'kms:Encrypt'
+              -  'kms:GenerateDataKey'
+            Resource: 
+              - Fn::ImportValue:
+                  !Sub S3Key-${AWSTenant}-${Env}
+      Roles: 
+        - !Ref GlueServiceRole
+        - !Ref LambdaServiceRole
+
+  S3BucketAccessPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Ref S3BucketAccessPolicyName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              -  's3:GetObject'
+              -  's3:ListBucket'
+              -  's3:PutObject'
+              -  's3:DeleteObject'
+            Resource: 
+              - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-raw*/*'
+              - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-curated*/*'
+              - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-transformed*/*'
+              - !Sub 'arn:aws:s3:::vci-${Env}-artifacts-${AWS::AccountId}-${AWS::Region}*/*'
+              - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-config*/*'
+      Roles: 
+        - !Ref GlueServiceRole
+        - !Ref LambdaServiceRole
+
+  GlueServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref GlueServiceRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  EventbridgeServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref EventbridgeServiceRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - events.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:    
+        - PolicyName: eventbridge_invoke_step_functions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'states:StartExecution'
+                Resource: 
+                  - !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${DataIngestionSFName}'
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  LambdaServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref LambdaServiceRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: glue_iam_role_pass_policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${GlueServiceRoleName}'        
+        - PolicyName: datalake_s3_limited_buckets_policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 's3:*'
+                Resource: 
+                  - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-raw'
+                  - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-curated'
+                  - !Sub 'arn:aws:s3:::${AWSTenant}-${Env}-transformed'
+        - PolicyName: AWSLambdaBasicExecutionRolePolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*
+
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                Resource: 
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*
+
+        - PolicyName: lambda_sfn_execution_policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Effect: Allow
+              Action:
+              - states:DescribeActivity
+              - states:DescribeStateMachine
+              - states:ListExecutions
+              - states:UpdateStateMachine
+              - states:StopExecution
+              - states:UntagResource
+              - states:TagResource
+              - states:StartSyncExecution
+              - states:DescribeStateMachineForExecution
+              - states:DescribeExecution
+              - states:GetExecutionHistory
+              - states:StartExecution
+              - states:ListTagsForResource
+              Resource: !Sub arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:*
+            - Effect: Allow
+              Action:
+              - states:SendTaskSuccess
+              - states:ListStateMachines
+              - states:SendTaskFailure
+              - states:ListActivities
+              Resource: "*"
+
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  StepFunctionServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: !Ref StepFunctionServiceRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - states.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaRole
+      Policies:
+        - PolicyName: "step-fn-inline-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'iam:GetRole'
+                  - 'iam:PassRole'
+                Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${GlueServiceRoleName}'     
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  CloudTrailServiceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: "/service-role/"
+      RoleName: !Ref CloudTrailServiceRoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudtrail.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns: 
+        - !Ref CloudTrailServicePolicy
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  CloudTrailServicePolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: cloud-trail-service-policy
+      Path: "/service-role/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AWSCloudTrailCreateLogStream2014110
+            Effect: Allow
+            Action:
+            - logs:CreateLogStream
+            Resource:
+            - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*:log-stream:*
+          - Sid: AWSCloudTrailPutLogEvents20141101
+            Effect: Allow
+            Action:
+            - logs:PutLogEvents
+            Resource:
+            - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*:log-stream:*

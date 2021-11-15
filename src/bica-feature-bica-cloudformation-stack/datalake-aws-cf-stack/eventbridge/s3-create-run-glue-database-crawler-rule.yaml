@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Template for Eventbridge rule"
+
+Parameters:
+  InvokedLambdaName:
+    Type: String
+    Default: lambda-trigger-glue-crawler
+  Env:
+    Type: String
+  AWSTenant:
+    Type: String
+  EventBridgeRuleRoleName:
+    Type: String
+    Default: eventbridge-service-role
+  LambdaRoleName:
+    Type: String
+    Default: lambda-service-role
+
+Resources:
+  S3RawCreateCrawlerRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Event Rule for triggering Lambda to create glue crawler at object creation.
+      Name: !Sub ${Env}_raw_${InvokedLambdaName}_rule
+      EventPattern:
+        source:
+        - aws.s3
+        detail-type:
+        - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+          - s3.amazonaws.com
+          eventName:
+          - PutObject
+          - CopyObject
+          requestParameters:
+            bucketName:
+            - !Sub ${AWSTenant}-${Env}-raw
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${InvokedLambdaName}'
+          Id: !Sub ${InvokedLambdaName}-748623asdf          
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/${EventBridgeRuleRoleName}
+
+  S3CuratedCreateCrawlerRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Event Rule for triggering Lambda to create glue crawler at object creation.
+      Name: !Sub ${Env}_curated_${InvokedLambdaName}_rule
+      EventPattern:
+        source:
+        - aws.s3
+        detail-type:
+        - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+          - s3.amazonaws.com
+          eventName:
+          - PutObject
+          - CopyObject
+          requestParameters:
+            bucketName:
+            - !Sub ${AWSTenant}-${Env}-curated
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${InvokedLambdaName}'
+          Id: !Sub ${InvokedLambdaName}-1453casdg         
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/${EventBridgeRuleRoleName}
+
+  S3TransformedCreateCrawlerRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Event Rule for triggering Lambda to create glue crawler at object creation.
+      Name: !Sub ${Env}_transformed_${InvokedLambdaName}_rule
+      EventPattern:
+        source:
+        - aws.s3
+        detail-type:
+        - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+          - s3.amazonaws.com
+          eventName:
+          - PutObject
+          - CopyObject
+          requestParameters:
+            bucketName:
+            - !Sub ${AWSTenant}-${Env}-transformed
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${InvokedLambdaName}'
+          Id: !Sub ${InvokedLambdaName}-1234sdget          
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/${EventBridgeRuleRoleName}

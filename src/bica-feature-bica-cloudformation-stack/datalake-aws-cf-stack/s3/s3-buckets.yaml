@@ -1,0 +1,282 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Template for S3 buckets"
+
+Parameters:
+  Env:
+    Type: String
+  CrossAccountDsnaRole:
+    Type: String
+  DsnaAccountId:
+    Type: String
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+  GlueCrawlerTriggerLambdaName:
+    Type: String
+    Default: lambda-trigger-sfn-data-pipeline
+  CloudTrailServiceRole:
+    Type: String
+    Default: cloud-trail-service-role
+    
+
+Resources:
+  S3Key:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: "KMS key for s3 buckets"
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: Enable IAM User Permissions
+          Effect: Allow
+          Principal:
+            AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+          Action: kms:*
+          Resource: "*"
+        - Sid: Allow use of the key
+          Effect: Allow
+          Principal:
+            AWS: !Sub arn:aws:iam::${DsnaAccountId}:root
+          Action:
+          - kms:Encrypt
+          - kms:Decrypt
+          - kms:ReEncrypt*
+          - kms:GenerateDataKey*
+          - kms:DescribeKey
+          Resource: "*"
+        - Sid: Allow attachment of persistent resources
+          Effect: Allow
+          Principal:
+            AWS: !Sub arn:aws:iam::${DsnaAccountId}:root
+          Action:
+          - kms:CreateGrant
+          - kms:ListGrants
+          - kms:RevokeGrant
+          Resource: "*"
+          Condition:
+            Bool:
+              kms:GrantIsForAWSResource: 'true'
+
+  S3KeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/Datalake-${Env}-S3key
+      TargetKeyId:
+        Ref: S3Key
+
+
+  CuratedS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWSTenant}-${Env}-curated
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !Ref S3Key
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+    DeletionPolicy: Delete
+
+  RawS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWSTenant}-${Env}-raw
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !Ref S3Key
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+    DeletionPolicy: Delete
+
+  TransformedS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWSTenant}-${Env}-transformed
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !Ref S3Key
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true  
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+    DeletionPolicy: Delete
+  
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub vci-${Env}-artifacts-${AWS::AccountId}-${AWS::Region}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !Ref S3Key
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+    DeletionPolicy: Delete
+
+  ConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWSTenant}-${Env}-config
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "aws:kms"
+              KMSMasterKeyID: !Ref S3Key
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls : true
+        BlockPublicPolicy : true
+        IgnorePublicAcls : true
+        RestrictPublicBuckets : true
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+    DeletionPolicy: Delete
+
+  RawBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref RawS3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+                AWS: !Ref CrossAccountDsnaRole
+            Action:
+              - "s3:ListBucket"
+              - "s3:GetBucketAcl"
+              - "s3:GetBucketLocation"
+            Resource:
+              - !GetAtt RawS3Bucket.Arn
+          - 
+            Effect: Allow
+            Principal:
+                AWS: !Ref CrossAccountDsnaRole
+            Action:
+              - "s3:GetObject"
+              - "s3:GetObjectAcl"
+            Resource: !Join ["/", [!GetAtt RawS3Bucket.Arn, "*" ]]
+    DependsOn: RawS3Bucket
+    DeletionPolicy: Delete
+
+  CuratedBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CuratedS3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+                AWS: !Ref CrossAccountDsnaRole
+            Action:
+              - "s3:ListBucket"
+              - "s3:GetBucketAcl"
+              - "s3:GetBucketLocation"
+            Resource: 
+              - !GetAtt CuratedS3Bucket.Arn
+          - Effect: Allow
+            Principal:
+                AWS: !Ref CrossAccountDsnaRole
+            Action:
+              - "s3:GetObject"
+              - "s3:GetObjectAcl"
+            Resource: !Join ["/", [!GetAtt CuratedS3Bucket.Arn, "*" ]]
+    DependsOn: TransformedS3Bucket
+    DeletionPolicy: Delete
+
+  TransformBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TransformedS3Bucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+                AWS: !Ref CrossAccountDsnaRole
+            Action:
+              - "s3:ListBucket"
+              - "s3:GetBucketAcl"
+              - "s3:GetBucketLocation"
+            Resource: 
+              - !GetAtt TransformedS3Bucket.Arn
+          - Effect: Allow
+            Principal:
+                AWS: !Ref CrossAccountDsnaRole
+            Action:
+              - "s3:GetObject"
+              - "s3:GetObjectAcl"
+            Resource: !Join ["/", [!GetAtt TransformedS3Bucket.Arn, "*" ]]
+    DependsOn: TransformedS3Bucket
+    DeletionPolicy: Delete
+
+Outputs:
+  S3KMSKey:
+    Description: S3 KMS key
+    Value: !GetAtt S3Key.Arn
+    Export:
+      Name: !Sub "S3Key-${AWSTenant}-${Env}"

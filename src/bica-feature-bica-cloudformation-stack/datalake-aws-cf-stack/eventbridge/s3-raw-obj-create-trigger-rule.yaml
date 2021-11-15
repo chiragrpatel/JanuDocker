@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Template for Eventbridge rule"
+
+Parameters:
+  InvokedStepFunctionName:
+    Type: String
+    Default: vw-cred-datalake-sfn-run-data-ingestion-pipeline
+  S3SourceBucket:
+    Type: String
+    Default: vw-cred-datalake-dev-curated
+  EventBridgeRuleName:
+    Type: String
+    Default: s3-raw-obj-create-trigger-rule
+  EventBridgeRuleRoleName:
+    Type: String
+    Default: vci-eventbridge-service-role
+  StepFunctionRoleName:
+    Type: String
+    Default: vw-cred-dl-dev-role-step-function-service
+
+Resources:
+  S3RawObjCreateEventBridgeRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Event Rule for object creation at s3 raw layer for datalake account.
+      Name: !Ref EventBridgeRuleName
+      EventPattern:
+        source:
+        - aws.s3
+        detail-type:
+        - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+          - s3.amazonaws.com
+          eventName:
+          - PutObject
+          - CopyObject
+          requestParameters:
+            bucketName:
+            - !Ref S3SourceBucket
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${InvokedStepFunctionName}'
+          Id: !Ref InvokedStepFunctionName
+          RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/${StepFunctionRoleName}
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/${EventBridgeRuleRoleName}

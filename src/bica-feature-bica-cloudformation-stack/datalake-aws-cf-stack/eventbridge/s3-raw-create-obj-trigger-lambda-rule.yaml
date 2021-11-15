@@ -1,0 +1,43 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Template for Eventbridge rule"
+
+Parameters:
+  InvokedLambdaName:
+    Type: String
+    Default: lambda-trigger-sfn-data-pipeline
+  EventBridgeRuleRoleName:
+    Type: String
+    Default: eventbridge-service-role
+  LambdaRoleName:
+    Type: String
+    Default: lambda-service-role
+  Env:
+    Type: String
+  AWSTenant:
+    Type: String
+
+Resources:
+  S3RawObjCreateEventBridgeRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      Description: Event Rule for object creation at s3 raw layer for datalake account.
+      Name: !Sub ${Env}_${InvokedLambdaName}_rule
+      EventPattern:
+        source:
+        - aws.s3
+        detail-type:
+        - AWS API Call via CloudTrail
+        detail:
+          eventSource:
+          - s3.amazonaws.com
+          eventName:
+          - PutObject
+          - CopyObject
+          requestParameters:
+            bucketName:
+            - !Sub ${AWSTenant}-${Env}-raw
+      State: ENABLED
+      Targets:
+        - Arn: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${InvokedLambdaName}'
+          Id: !Sub ${InvokedLambdaName}-1234sruscseces          
+      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/${EventBridgeRuleRoleName}

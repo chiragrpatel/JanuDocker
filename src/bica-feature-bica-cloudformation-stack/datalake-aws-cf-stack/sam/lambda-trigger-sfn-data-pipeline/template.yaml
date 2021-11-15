@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Lambda to Invoke Step Function to run data ingestion pipeline
+
+Parameters:
+  LambdaFunctionName:
+    Type: String
+    Default: lambda-trigger-sfn-data-pipeline
+  StepFunctionName:
+    Type: String
+    Default: sfn-run-data-ingestion-pipeline
+  LambdaRole:
+    Type: String
+    Default: lambda-service-role
+  Subnets:
+    Type: CommaDelimitedList
+  Env:
+    Type: String
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+
+Resources:
+  SMLogs:
+    Type: AWS::Logs::LogGroup
+
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.8
+      Description: Invoke step function to run data ingestion pipeline
+      MemorySize: 128
+      Timeout: 90
+      CodeUri: ../../lambda/lambda-trigger-sfn-data-pipeline
+      FunctionName: !Ref LambdaFunctionName
+      Environment:
+        Variables:
+          env: !Ref Env
+          sfn: !Ref StepFunctionName
+          sns_topic: 
+              Fn::ImportValue: VciDatapipelineSnsTopic 
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/${LambdaRole}"
+      Runtime: python3.8
+      Tags:
+        "vci:team" : !Ref TeamTag
+        "env" : !Ref Env
+        "tenant" : !Ref AWSTenant
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue: vci-self-referencing-sg
+        SubnetIds: !Ref Subnets
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties: 
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !Sub arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/*

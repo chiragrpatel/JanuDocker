@@ -1,0 +1,51 @@
+---
+Description: This template creates the self referencing security groups
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  VpcId:
+    Description: ID of VPC
+    Type: 'AWS::EC2::VPC::Id'
+  TeamTag:
+    Type: String
+    Default: itdna
+  Env:
+    Type: String
+  AWSTenant:
+    Type: String
+  SelfReferencingSGName:
+    Type: String
+    Default: vci-self-referencing-sg  
+
+Resources:
+
+  SelfReferencingSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Ref SelfReferencingSGName
+      GroupDescription: Self Referencing Security Group
+      VpcId: !Ref VpcId
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  SelfReferencingSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn: SelfReferencingSG
+    Properties:
+      GroupId: !Ref SelfReferencingSG
+      IpProtocol: tcp
+      FromPort: '0'
+      ToPort: '65535'
+      SourceSecurityGroupId: !Ref SelfReferencingSG
+
+Outputs:
+  SelfReferencingSG:
+    Description: Self Referencing Security Group
+    Value: !Ref SelfReferencingSG
+    Export:
+      Name: !Ref SelfReferencingSGName

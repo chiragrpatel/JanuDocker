@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Step function for data ingestion pipeline
+
+Parameters:
+  StepFunctionName:
+    Type: String
+    Default: sfn-run-data-ingestion-pipeline
+  SFRole:
+    Type: String
+    Default: step-function-service-role
+  Env:
+    Type: String
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+
+Resources:
+  SMLogs:
+    Type: AWS::Logs::LogGroup
+
+  VWCdlDataIngestionSF:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Ref StepFunctionName
+      DefinitionUri: ../../state_machine/sfn-run-data-ingestion-pipeline.json
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/${SFRole}
+      DefinitionSubstitutions:
+        AccountId: !Ref "AWS::AccountId"
+      Logging:
+        Level: ALL
+        IncludeExecutionData: TRUE
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt SMLogs.Arn
+      Tags:
+        "vci:team" : !Ref TeamTag
+        "env" : !Ref Env
+        "tenant" : !Ref AWSTenant

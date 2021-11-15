@@ -1,0 +1,44 @@
+---
+Description: This template creates the self referencing security groups
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  TeamTag:
+    Type: String
+    Default: itdna
+  Env:
+    Type: String
+  AWSTenant:
+    Type: String
+  SNSTopicName:
+    Type: String
+  SubscriptionEmail:
+    Type: String
+
+Resources:
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties: 
+      DisplayName: !Ref SNSTopicName
+      Tags: 
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+      TopicName: !Ref SNSTopicName
+
+  MySubscriptions:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref SubscriptionEmail
+      Protocol: email
+      TopicArn: !Ref SNSTopic
+
+Outputs:
+  SNSTopicOutput:
+    Description: SNS Topic 
+    Value: !GetAtt SNSTopic.TopicName
+    Export:
+      Name: VciDatapipelineSnsTopic

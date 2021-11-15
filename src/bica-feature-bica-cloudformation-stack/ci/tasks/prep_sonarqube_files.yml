@@ -1,0 +1,46 @@
+---
+platform: linux
+image_resource:
+  type: docker-image
+  source:
+    repository: node
+
+inputs:
+  - name: source
+# These are the common inputs, If you need another, add it.
+  - name: results_lint
+    optional: true
+  - name: results_unittests
+    optional: true
+  - name: results_cfn_lint
+    optional: true
+
+outputs:
+  - name: code-coverage
+
+run:
+  path: /bin/bash
+  args:
+  - -exc
+  - |
+    # https://vaneyckt.io/posts/safer_bash_scripts_with_set_euxo_pipefail/
+    set -euxo pipefail
+    
+    # Aggregate content of all result folders into code-coverage
+    find -name "results_*" -type d | while read directory_name; do
+      cp -Rv $directory_name/* code-coverage
+    done
+    
+    # Some of the reports run with absolute paths in the output.
+    # Since we will run the analysis in a different location we need to update those paths.
+    # replace all instances of /tmp/build/[randomstring]/ with report runner path /tmp/build/put/
+    find ./code-coverage/ -type f -exec sed -i 's+/tmp/build/[^/]*/+/tmp/build/put/+gI' {} \;
+    
+    pushd source
+      # update the branch name in sonarqube properties because it can't auto detect on headless git clones
+      BRANCH_NAME=$(git show -s --pretty=%D HEAD | tr -s ', ' '\n' | grep -v HEAD | sed -n 2p)
+      echo -en "\nsonar.branch.name=$BRANCH_NAME\n" >> sonar-project.properties
+      
+      # bring the code back together with the report results again in output directory, so that it can run static analysis on it
+      cp -Rv . ../code-coverage
+    popd

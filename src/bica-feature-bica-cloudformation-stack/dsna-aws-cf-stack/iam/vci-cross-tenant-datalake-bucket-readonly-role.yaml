@@ -1,0 +1,82 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: "Template for role vci-sagemaker-CrossAccount-DataLake-Access-Role"
+
+Parameters:
+  Env:
+    Type: String
+  CrossAccountDLRoleName:
+    Type: String
+    Default: vci-sagemaker-CrossAccount-DataLake-Access-Role
+  TeamTag:
+    Type: String
+    Default: itdna
+  AWSTenant:
+    Type: String
+  DLAWSTenant:
+    Type: String
+  DLAccountId:
+    Type: String  
+
+Resources:
+
+  CrossAccountDLRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "sagemaker.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      Description: "IAM role for Sagemaker Service to access cross account Datalake S3 buckets."
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess"
+      RoleName: !Ref CrossAccountDLRoleName
+      Tags:
+        - Key : "vci:team"
+          Value: !Ref TeamTag
+        - Key : "env"
+          Value: !Ref Env
+        - Key : "tenant"
+          Value: !Ref AWSTenant
+
+  DLS3BucketAccessInlinePolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: "DL_S3_bucket_access_inline_policy"
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            Resource: 
+            - !Sub arn:aws:s3:::${DLAWSTenant}-${Env}-raw/*
+            - !Sub arn:aws:s3:::${DLAWSTenant}-${Env}-curated/*
+            - !Sub arn:aws:s3:::${DLAWSTenant}-${Env}-transformed/*
+      Roles:
+        - !Ref CrossAccountDLRole
+
+  DLCMKAccessInlinePolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: !Sub DL_CMK_access_${DLAccountId}_inline_policy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+            - kms:Decrypt
+            - kms:DescribeKey
+            Resource: !Sub arn:aws:kms:us-east-1:${DLAccountId}:key/*
+      Roles:
+        - !Ref CrossAccountDLRole
